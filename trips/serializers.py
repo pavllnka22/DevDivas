@@ -5,7 +5,7 @@ from .models import Country, City, Trip, Accommodation, Flight
 class CountrySerializer(serializers.ModelSerializer):
     class Meta:
         model = Country
-        fields = ["id", "name"]
+        fields = ['id', 'name', 'description', 'flag_url', 'currency']
 
 
 class CitySerializer(serializers.ModelSerializer):

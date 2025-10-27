@@ -3,8 +3,11 @@ from django.db import models
 
 class Country(models.Model):
     name = models.CharField(max_length=100, unique=True)
+    description = models.TextField(blank=True)
+    flag_url = models.URLField(blank=True, null=True)
+    currency = models.CharField(max_length=50, blank=True, null=True)
 
-    def __str__(self):
+def __str__(self):
         return self.name
 
 admin.site.register(Country)

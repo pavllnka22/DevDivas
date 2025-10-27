@@ -8,10 +8,16 @@ from .models import Country, City, Trip
 from .serializers import CountrySerializer, CitySerializer, TripSerializer
 
 
-class CountryListView(generics.ListAPIView):
-    queryset = Country.objects.all()
-    serializer_class = CountrySerializer
+def country_list(request):
+    countries = Country.objects.all().values('id', 'name', 'description', 'flag_url', 'currency')
+    return JsonResponse(list(countries), safe=False)
 
+def country_detail(request, country_id):
+    try:
+        country = Country.objects.values('id', 'name', 'description', 'flag_url', 'currency').get(id=country_id)
+        return JsonResponse(country, safe=False)
+    except Country.DoesNotExist:
+        return JsonResponse({'error': 'Country not found'}, status=404)
 class CityListView(generics.ListAPIView):
 
    serializer_class = CitySerializer
