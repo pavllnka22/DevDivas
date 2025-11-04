@@ -1,9 +1,12 @@
 import random
 
 from django.core.mail import send_mail
-from rest_framework import serializers, settings
-from django.contrib.auth import get_user_model
+from rest_framework import serializers
+from django.conf import settings
+from django.contrib.auth import get_user_model, authenticate
 from django.core.validators import validate_email
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer, TokenRefreshSerializer
+from rest_framework_simplejwt.views import TokenObtainPairView
 
 CustomUser = get_user_model()
 
@@ -62,3 +65,35 @@ class RegisterSerializer(serializers.ModelSerializer):
         )
 
         return user
+
+class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
+    def validate(self, attrs):
+        email = attrs.get('email') or attrs.get('username')  # фронт може прислати email
+        password = attrs.get('password')
+
+        if not email or not password:
+            raise serializers.ValidationError({'non_field_errors': ['Email and password required']})
+
+        try:
+            user = CustomUser.objects.get(email=email)
+        except CustomUser.DoesNotExist:
+            raise serializers.ValidationError({'non_field_errors': ['Invalid email or password']})
+
+        if not user.check_password(password):
+            raise serializers.ValidationError({'non_field_errors': ['Invalid email or password']})
+
+        if not user.is_active:
+            raise serializers.ValidationError({'non_field_errors': ['User account is disabled.']})
+
+        self.user = user
+        data = super().validate({'username': user.get_username(), 'password': password})
+        data['user'] = {
+            'id': user.id,
+            'email': user.email,
+            'first_name': getattr(user, 'first_name', ''),
+            'last_name': getattr(user, 'last_name', ''),
+        }
+        return data
+
+class CustomTokenObtainPairView(TokenObtainPairView):
+    serializer_class = CustomTokenObtainPairSerializer

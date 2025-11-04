@@ -2,15 +2,19 @@ import logging
 
 from django.contrib.auth import authenticate, get_user_model
 from rest_framework import permissions, status
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.views import TokenObtainPairView
 
 from users.serializers import RegisterSerializer, CustomUser
 
 logger = logging.getLogger('users')
 
 User = get_user_model()
+
 
 
 class RegisterView(APIView):
@@ -87,3 +91,15 @@ class ProtectedAPIView(APIView):
         return Response({
             'message': 'This is a protected view',
             'user': request.user.first_name}, status=status.HTTP_200_OK)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def profile_view(request):
+    user = request.user
+    return Response({
+        'id': user.id,
+        'email': user.email,
+        'phone': user.phone,
+        'first_name': user.first_name,
+        'last_name': user.last_name,
+    })

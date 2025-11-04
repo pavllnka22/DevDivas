@@ -1,4 +1,5 @@
 import logging
+
 from django.contrib.auth.models import AbstractUser
 from django.core.validators import RegexValidator
 from django.db import models
@@ -11,8 +12,7 @@ phone_validator = RegexValidator(
 )
 
 class CustomUser(AbstractUser):
-
-
+    username = None
     email = models.EmailField(unique=True)
     phone = models.CharField( max_length=13,unique=True,validators=[phone_validator])
     first_name = models.CharField(max_length=30)
@@ -21,7 +21,8 @@ class CustomUser(AbstractUser):
     is_email_verified = models.BooleanField(default=False)
     email_verification_code = models.CharField(max_length=6, blank=True, null=True)
 
-    REQUIRED_FIELDS = ['email', 'phone', 'first_name', 'last_name']
+    USERNAME_FIELD = 'email'
+    REQUIRED_FIELDS = [ 'phone', 'first_name', 'last_name']
 
     def save(self, *args, **kwargs):
         is_new = self.pk is None
@@ -33,5 +34,4 @@ class CustomUser(AbstractUser):
 
     def __str__(self):
         return self.first_name
-
 
