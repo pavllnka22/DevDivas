@@ -1,11 +1,7 @@
-import random
-
-from django.core.mail import send_mail
-from rest_framework import serializers
-from django.conf import settings
-from django.contrib.auth import get_user_model, authenticate
+from django.contrib.auth import get_user_model
 from django.core.validators import validate_email
-from rest_framework_simplejwt.serializers import TokenObtainPairSerializer, TokenRefreshSerializer
+from rest_framework import serializers
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework_simplejwt.views import TokenObtainPairView
 
 CustomUser = get_user_model()
@@ -52,17 +48,10 @@ class RegisterSerializer(serializers.ModelSerializer):
         user = CustomUser.objects.create(**validated_data)
         user.set_password(password)
 
-        code = str(random.randint(100000, 999999))
-        user.email_verification_code = code
+
         user.save()
 
-        send_mail(
-            subject="Finish your registration in one step. Do not share your verification code with anyone",
-            message=f"Your code: {code}",
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[user.email],
-            fail_silently=False,
-        )
+
 
         return user
 
@@ -86,7 +75,7 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
             raise serializers.ValidationError({'non_field_errors': ['User account is disabled.']})
 
         self.user = user
-        data = super().validate({'username': user.get_username(), 'password': password})
+        data = super().validate({'email' : email, 'password': password})
         data['user'] = {
             'id': user.id,
             'email': user.email,
