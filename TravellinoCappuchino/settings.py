@@ -39,6 +39,7 @@ INSTALLED_APPS = [
      'trips',
      'users',
      'corsheaders',
+     'drf_yasg',
      'rest_framework',
     'django.contrib.admin',
     'django.contrib.auth',
