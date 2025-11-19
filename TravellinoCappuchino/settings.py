@@ -172,3 +172,4 @@ DEFAULT_FROM_EMAIL = 'noreply@yoursite.com'
 GOOGLE_MAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY")
 WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")
 
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
