@@ -3,7 +3,7 @@ from rest_framework_simplejwt.views import TokenRefreshView
 
 from .serializers import CustomTokenObtainPairView
 from .views import RegisterView, LoginView, LogoutView, ProtectedAPIView, VerifyEmailView, ForgotPasswordView, \
-    ResetPasswordView
+    ResetPasswordView, ProfileView
 
 app_name = 'users'
 
@@ -19,5 +19,7 @@ urlpatterns = [
     path('email-error/', VerifyEmailView.as_view(), name='email-error'),
     path('forgot-password/', ForgotPasswordView.as_view(), name='forgot-password'),
     path('reset-password/<uid>/<token>/', ResetPasswordView.as_view(), name='reset-password'),
+    path('profile/', ProfileView.as_view(), name='profile'),
+
 
 ]

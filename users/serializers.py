@@ -74,15 +74,23 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         if not user.is_active:
             raise serializers.ValidationError({'non_field_errors': ['User account is disabled.']})
 
-        self.user = user
-        data = super().validate({'email' : email, 'password': password})
+        data = super().validate(attrs)
+
         data['user'] = {
-            'id': user.id,
-            'email': user.email,
-            'first_name': getattr(user, 'first_name', ''),
-            'last_name': getattr(user, 'last_name', ''),
+            'id': self.user.id,
+            'email': self.user.email,
+            'first_name': self.user.first_name,
+            'last_name': self.user.last_name,
+            'phone': self.user.phone,
         }
         return data
 
 class CustomTokenObtainPairView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
+
+
+class ProfileSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CustomUser
+        fields = ['email', 'first_name', 'last_name', 'phone', 'is_email_verified', 'password']
+        read_only_fields = ['is_email_verified', 'email']

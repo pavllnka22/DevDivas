@@ -11,9 +11,11 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
+from yaml import serialize
+
 from .utils import send_password_reset_email
 
-from users.serializers import RegisterSerializer, CustomUser
+from users.serializers import RegisterSerializer, CustomUser, ProfileSerializer
 
 logger = logging.getLogger('users')
 
@@ -85,14 +87,11 @@ def post(self, request):
 
     refresh = RefreshToken.for_user(user)
     return Response({
-        'message': f'Hello, {user.first_name}!',
+        'access': str(refresh.access_token),
+        'refresh': str(refresh),
         'user': {
             'id': user.id,
             'email': user.email,
-        },
-        'tokens': {
-            'refresh': str(refresh),
-            'access': str(refresh.access_token),
         }
     })
 
@@ -172,3 +171,27 @@ def profile_view(request):
         'first_name': user.first_name,
         'last_name': user.last_name,
     })
+
+
+class ProfileView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        serializer = ProfileSerializer(request.user)
+        return Response(serializer.data)
+
+    def put(self, request):
+        serializer = ProfileSerializer(request.user, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        new_password = serializer.validated_data.pop('password', None)
+        user = serializer.instance
+        if new_password:
+            user.set_password(new_password)
+            user.save()
+        serializer.save()
+        return Response(ProfileSerializer(user).data)
+
+    def delete(self, request):
+        user = request.user
+        user.delete()
+        return Response({"message": "Account deleted"}, status=status.HTTP_200_OK)
