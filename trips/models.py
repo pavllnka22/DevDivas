@@ -1,26 +1,54 @@
+import os
+
+import requests
 from django.contrib import admin
 from django.db import models
+
+from trips.utils import generate_google_maps_link_city
+
 
 class Country(models.Model):
     name = models.CharField(max_length=100, unique=True)
     description = models.TextField(blank=True)
     flag_url = models.URLField(blank=True, null=True)
     currency = models.CharField(max_length=50, blank=True, null=True)
+    latitude = models.FloatField(null=True, blank=True)
+    longitude = models.FloatField(null=True, blank=True)
 
-def __str__(self):
-        return self.name
+
+    def __str__(self):
+       return self.name
 
 admin.site.register(Country)
 
 class City(models.Model):
-    country = models.ForeignKey(Country, on_delete=models.CASCADE, related_name="cities")
+    country = models.ForeignKey(Country, on_delete=models.CASCADE, related_name='cities')
     name = models.CharField(max_length=100)
+    description = models.TextField(blank=True)
+    img_url = models.URLField(blank=True, null=True)
+    latitude = models.FloatField(null=True, blank=True)
+    longitude = models.FloatField(null=True, blank=True)
 
     class Meta:
         unique_together = ("country", "name")
 
     def __str__(self):
         return f"{self.name} ({self.country.name})"
+
+    def save(self, *args, **kwargs):
+        if (self.latitude is None or self.longitude is None) and self.name and self.country:
+            API_KEY = os.getenv("WEATHER_API_KEY")
+            url = (
+                f"http://api.openweathermap.org/geo/1.0/direct"
+                f"?q={self.name}&limit=1&appid={API_KEY}"
+            )
+            response = requests.get(url).json()
+
+            if response: # check if it is not empty
+                self.latitude = response[0]["lat"]
+                self.longitude = response[0]["lon"]
+
+        super().save(*args, **kwargs)
 
 admin.site.register(City)
 
@@ -40,6 +68,8 @@ class Accommodation(models.Model):
     accommodation_title = models.CharField(max_length=200)
     accommodation_description = models.TextField()
     accommodation_price = models.DecimalField(max_digits=10, decimal_places=2)
+    latitude = models.FloatField(null=True, blank=True)
+    longitude = models.FloatField(null=True, blank=True)
 
 admin.site.register(Accommodation)
 
