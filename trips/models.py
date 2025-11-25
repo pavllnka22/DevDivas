@@ -3,6 +3,7 @@ import os
 import requests
 from django.contrib import admin
 from django.db import models
+from django import forms
 
 from trips.utils import generate_google_maps_link_city
 
@@ -81,3 +82,19 @@ class Flight(models.Model):
     flight_date = models.DateField()
 
 admin.site.register(Flight)
+
+class FlightBookingForm(forms.Form):
+    first_name = forms.CharField(max_length=50)
+    last_name = forms.CharField(max_length=50)
+    date_of_birth = forms.DateField(widget=forms.DateInput(attrs={'type': 'date'}))
+    gender = forms.ChoiceField(choices=(("MALE", "Male"), ("FEMALE", "Female")))
+    email = forms.EmailField()
+    phone_number = forms.CharField(max_length=20)
+    phone_country_code = forms.CharField(max_length=5, initial="1")
+    passport_number = forms.CharField(max_length=50)
+    passport_expiry_date = forms.DateField(widget=forms.DateInput(attrs={'type': 'date'}))
+    passport_issuance_date = forms.DateField(widget=forms.DateInput(attrs={'type': 'date'}))
+    passport_issuance_location = forms.CharField(max_length=100)
+    birth_place = forms.CharField(max_length=100)
+    nationality = forms.CharField(max_length=5, initial="UA")
+    passport_country = forms.CharField(max_length=5, initial="UA")

@@ -1,13 +1,19 @@
 from django.urls import path
+
+from . import views
 from .views import country_list, country_detail, CityListView, TripListView, city_detail, get_weather
 
 urlpatterns = [
+
     path('countries/', country_list),
     path('countries/<int:country_id>/', country_detail),
     path("cities/", CityListView.as_view(), name="city-list"),
     path("cities/<int:city_id>/", city_detail),
+    path('trips/city-to-iata/', views.city_to_iata, name='city-to-iata'),
     path("trips/", TripListView.as_view(), name="trip-list"),
     path("weather/<int:city_id>/", get_weather),
-
+    path('trips/flights/', views.flight_offers, name='flight_offers'),
+    path('trips/origin_airport_search/', views.origin_airport_search, name='origin_airport_search'),
+    path('trips/book_flight/', views.book_flights, name='book_flight'),
+    path('trips/destination_airport_search/', views.destination_airport_search, name='destination_airport_search')
 ]
-
