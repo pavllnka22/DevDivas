@@ -114,17 +114,7 @@ AUTH_PASSWORD_VALIDATORS = [
 AUTH_USER_MODEL = 'users.CustomUser'
 
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5178",
-    "http://localhost:5176",
-    "http://localhost:5175",
-    "http://localhost:5173"
-]
-
-CSRF_TRUSTED_ORIGINS = [
-    "http://localhost:5176",
-    "http://localhost:5175",
-    "http://localhost:5178",
-    "http://localhost:5173",
+    "http://localhost:5178"
 ]
 
 CORS_ALLOW_CREDENTIALS = True
@@ -132,7 +122,14 @@ CORS_ALLOW_CREDENTIALS = True
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
-    )
+    ),
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+}
+
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'Travellino Cappuchino',
+    'DESCRIPTION': 'API documentation',
+    'VERSION': '1.0.0',
 }
 
 # Internationalization
