@@ -22,3 +22,5 @@ def generate_google_maps_link_country(country_name):
 def generate_google_maps_embed_country(country_name, api_key):
     encoded_name = quote_plus(country_name)
     return f"https://www.google.com/maps/embed/v1/place?key={api_key}&q={encoded_name}"
+
+

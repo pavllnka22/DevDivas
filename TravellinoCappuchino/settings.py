@@ -113,11 +113,18 @@ AUTH_PASSWORD_VALIDATORS = [
 
 AUTH_USER_MODEL = 'users.CustomUser'
 
+AUTHENTICATION_BACKENDS = [
+    'django.contrib.auth.backends.ModelBackend',
+]
+
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5178"
+    "http://localhost:5178",
+    "http://localhost:5173"
 ]
 
 CORS_ALLOW_CREDENTIALS = True
+
+CORS_ALLOW_ALL_ORIGINS = True
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
@@ -172,7 +179,11 @@ DEFAULT_FROM_EMAIL = 'noreply@yoursite.com'
 GOOGLE_MAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY")
 WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")
 
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+#GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
 AMADEUS_API_KEY = os.getenv("AMADEUS_API_KEY")
 AMADEUS_API_SECRET = os.getenv("AMADEUS_API_SECRET")
+
+GENERATOR = os.getenv('TRIP_GENERATOR')
+GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
+

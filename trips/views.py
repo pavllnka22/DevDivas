@@ -2,27 +2,33 @@ import json
 
 import requests
 from amadeus import Client, ResponseError, Location
-from amadeus.namespaces._airport import Airport
 from amadeus.namespaces._booking import Booking
 from django.contrib import messages
 from django.http import JsonResponse
-from django.shortcuts import redirect
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework import generics, status
 from rest_framework.decorators import permission_classes, api_view
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
-import users
 from TravellinoCappuchino import settings
+from .booking_flight import Booking
 from .flight import Flight
 from .metrics import Metrics
-from .booking_flight import Booking
-from .models import Country, City, Trip, FlightBookingForm
+from .models import Country, City, Trip, Hotel, Room
 from .serializers import CitySerializer, TripSerializer, CountrySerializer
 
-from django.contrib.auth.models import User
-from users.models import CustomUser
+
+from google import genai
+from google.genai.errors import APIError
+from django.shortcuts import get_object_or_404
+
+
+try:
+    client = genai.Client()
+except Exception as e:
+    print(f"Error initializing Gemini: {e}")
+    client = None
 
 
 def country_list(request):
@@ -142,16 +148,36 @@ def flight_offers(request):
 
         try:
             flight_offers = get_flight_offers(**kwargs)
-            cheapest_flight = get_cheapest_flight_price(flight_offers)
+            metrics = build_price_metrics(flight_offers)
             response = {
                 'flight_offers': flight_offers,
-                'cheapest_flight': cheapest_flight
+                'metrics': metrics
             }
+
             return JsonResponse(response)
+        except ResponseError as e:  # Catch specifically ResponseError
+            print(f"Amadeus API detailed error: {e.response.body}")
+            return JsonResponse({'error': e.response.body}, status=400)
         except Exception as e:
             return JsonResponse({'error': str(e)}, status=400)
 
     return JsonResponse({'error': 'POST method required'}, status=405)
+
+
+def generate_booking_link(airline, origin, destination, date):
+    AIRLINE_LINKS = {
+        "IB": "https://www.iberia.com/flights/?origin={o}&destination={d}&departureDate={date}",
+        "LH": "https://www.lufthansa.com/fl/en/flight-search?origin={o}&destination={d}&departureDate={date}",
+        "KL": "https://www.klm.com/travel/ua_en/plan_and_book/book_a_flight/index.htm?origin={o}&destination={d}&departureDate={date}",
+        "AF": "https://wwws.airfrance.com.ua/search?origin={o}&destination={d}&outboundDate={date}",
+    }
+    if airline in AIRLINE_LINKS:
+        return AIRLINE_LINKS[airline].format(
+            o=origin,
+            d=destination,
+            date=date
+        )
+    return f"https://www.kayak.com/flights/{origin}-{destination}/{date}?sort=bestflight_a"
 
 
 def get_flight_offers(**kwargs):
@@ -159,6 +185,27 @@ def get_flight_offers(**kwargs):
     flight_offers = []
     for flight in search_flights.data:
         offer = Flight(flight).construct_flights()
+        try:
+            first_segment = flight["itineraries"][0]["segments"][0]
+            last_segment = flight["itineraries"][0]["segments"][-1]
+
+            airline = first_segment["carrierCode"]
+            origin = first_segment["departure"]["iataCode"]
+            final_destination = last_segment["arrival"]["iataCode"]
+
+            date = first_segment["departure"]["at"].split("T")[0]
+
+            offer["bookingLink"] = generate_booking_link(
+                airline,
+                origin,
+                final_destination,
+                date
+            )
+
+        except Exception as e:
+            print("Could not generate booking link:", e)
+            offer["bookingLink"] = None
+
         flight_offers.append(offer)
     return flight_offers
 
@@ -175,29 +222,27 @@ def get_trip_purpose(**kwargs_trip_purpose):
 
 
 def get_cheapest_flight_price(flight_offers):
-    return flight_offers[0]['price']
+    return min(float(flight['price']) for flight in flight_offers)
 
 
-def rank_cheapest_flight(cheapest_flight_price, first_price, third_price):
-    cheapest_flight_price_to_number = float(cheapest_flight_price)
-    first_price_to_number = float(first_price)
-    third_price_to_number = float(third_price)
-    if cheapest_flight_price_to_number < first_price_to_number:
-        return 'A GOOD DEAL'
-    elif cheapest_flight_price_to_number > third_price_to_number:
-        return 'HIGH'
-    else:
-        return 'TYPICAL'
+def build_price_metrics(flight_offers):
+    prices = [float(f["price"]) for f in flight_offers]
+    prices.sort()
+
+    min_price = prices[0]
+    max_price = prices[-1]
+
+    n = len(prices)
+
+    cheapest = prices[0]
 
 
-def is_cheapest_flight_out_of_range(cheapest_flight_price, metrics):
-    min_price = float(metrics['min'])
-    max_price = float(metrics['max'])
-    cheapest_flight_price_to_number = float(cheapest_flight_price)
-    if cheapest_flight_price_to_number < min_price:
-        metrics['min'] = cheapest_flight_price
-    elif cheapest_flight_price_to_number > max_price:
-        metrics['max'] = cheapest_flight_price
+
+    return {
+        "min": min_price,
+        "max": max_price,
+        "cheapest_flight": cheapest,
+    }
 
 
 @csrf_exempt
@@ -231,6 +276,7 @@ def destination_airport_search(request):
     except ResponseError as e:
         return JsonResponse([], safe=False)
 
+
 @csrf_exempt
 def get_city_airport_list(amadeus_data):
     result = []
@@ -240,67 +286,6 @@ def get_city_airport_list(amadeus_data):
         result.append(f"{city} ({code})")
     return result
 
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def book_flights(request):
-    if not request.user.is_authenticated:
-        return JsonResponse({"error": "You need to log in to book a flight."}, status=403)
-
-    try:
-        data = request.data
-        flight = data.get("flight")
-        if not flight:
-            return JsonResponse({"error": "Flight data missing"}, status=400)
-    except (json.JSONDecodeError, ValueError) as e:
-        return JsonResponse({"error": str(e)}, status=400)
-
-    traveler = {
-            "id": "1",
-            "dateOfBirth": data.get('date_of_birth'),
-            "name": {
-                "firstName": data.get('first_name'),
-                "lastName": data.get('last_name')
-            },
-            "gender": data.get('gender'),
-            "contact": {
-                "emailAddress": data.get('email'),
-                "phones": [{
-                    "deviceType": "MOBILE",
-                    "countryCallingCode": data.get('phone_country_code'),
-                    "number": data.get('phone_number')
-                }]
-            },
-            "documents": [{
-                "documentType": "PASSPORT",
-                "birthPlace": data.get('birth_place'),
-                "issuanceLocation": data.get('passport_issuance_location'),
-                "issuanceDate": data.get('passport_issuance_date'),
-                "number": data.get('passport_number'),
-                "expiryDate": data.get('passport_expiry_date'),
-                "issuanceCountry": data.get('passport_country'),
-                "validityCountry": data.get('passport_country'),
-                "nationality": data.get('nationality'),
-                "holder": True
-            }]
-        }
-
-    try:
-        flight_price_confirmed = amadeus.shopping.flight_offers.pricing.post(flight).data["flightOffers"]
-    except (ResponseError, KeyError, AttributeError) as error:
-        return JsonResponse({"error": getattr(error.response, "body", str(error))}, status=400)
-
-    try:
-        order = amadeus.booking.flight_orders.post(flight_price_confirmed, traveler).data
-    except (ResponseError, KeyError, AttributeError) as error:
-        detail = getattr(error.response.result["errors"][0], "detail", str(error)) if hasattr(error,
-                                                                                              "response") else str(
-            error)
-        return JsonResponse({"error": detail}, status=400)
-
-    booking = Booking(order).construct_booking()
-
-    return JsonResponse({"booking": booking}, status=200)
 
 
 @api_view(['GET'])
@@ -323,3 +308,210 @@ def city_to_iata(request):
         return Response({"iata": iata_code})
     except ResponseError as e:
         return Response({"error": str(e)}, status=500)
+
+
+def generate_city_trip_plan(city_id):
+    if not client:
+        raise Exception("Gemini Client wasn't initialized.")
+
+    city = get_object_or_404(City.objects.select_related('country'), pk=city_id)
+
+    context = (
+        f"City: {city.name}, Country: {city.country.name}. "
+        f"Description: {city.description}. "
+        f"Currency: {city.country.currency}."
+    )
+
+    model_name = "gemini-2.5-flash"
+    prompt = f"""Create a plan for a trip in the specified city {context}
+    plan must contain:
+            1. Main sightseeing
+            2. Information about local currency ({city.country.currency}).
+            3. Recommendations of local cuisine (at least 3-4 meals).
+            4. All answers in English.
+
+            Plan must be in a way of structured text with headers etc..
+            """
+
+    try:
+        response = client.models.generate_content(
+            model=model_name,
+            contents=prompt
+        )
+        return response.text
+
+    except APIError as e:
+        print(f"Error Gemini API: {e}")
+        raise APIError(f"{e}")
+    except Exception as e:
+        print(f"Unknown error: {e}")
+        raise
+
+
+@api_view(['POST'])
+def generate_city_trip_view(request):
+    if request.method == 'POST':
+        city_id = request.data.get('city_id')
+
+        if not city_id:
+            return Response({"error": "You need to specify the city's id."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            trip_plan = generate_city_trip_plan(city_id)
+
+            return Response({"trip": trip_plan}, status=status.HTTP_200_OK)
+
+        except City.DoesNotExist:
+            return Response({"error": "No city with such id."}, status=status.HTTP_404_NOT_FOUND)
+        except APIError as e:
+            return Response(
+                {"error": f"Couldn't generate: {e}"},
+                status=status.HTTP_502_BAD_GATEWAY
+            )
+        except Exception as e:
+            return Response(
+                {"error": f"Unknown error with server: {e}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+@csrf_exempt
+def hotel_search(request):
+    if request.method != "POST":
+        return JsonResponse({"error": "POST required"}, status=405)
+
+    data = json.loads(request.body)
+
+    city_code = data.get("cityCode")
+    checkin = data.get("checkInDate")
+    checkout = data.get("checkOutDate")
+
+    if not city_code or not checkin or not checkout:
+        return JsonResponse({"error": "Missing params"}, status=400)
+
+    try:
+        hotels = amadeus.reference_data.locations.hotels.by_city.get(
+            cityCode=city_code
+        ).data
+
+        hotel_ids = [h["hotelId"] for h in hotels[:25]]
+
+        offers = amadeus.shopping.hotel_offers_search.get(
+            hotelIds=hotel_ids,
+            checkInDate=checkin,
+            checkOutDate=checkout
+        ).data
+
+        results = []
+        prices = []
+
+        for h in offers:
+            hotel = h["hotel"]
+            for offer in h["offers"]:
+                price = float(offer["price"]["total"])
+                prices.append(price)
+
+                results.append({
+                    "hotelId": hotel["hotelId"],
+                    "name": hotel["name"],
+                    "city": hotel["cityCode"],
+                    "price": price,
+                    "currency": offer["price"]["currency"],
+                    "offerId": offer["id"],
+                    "bookingLink": f"https://www.booking.com/searchresults.html?ss={hotel['name']}"
+                })
+
+        prices.sort()
+
+        metrics = {
+            "min": min(prices),
+            "max": max(prices),
+            "first": prices[len(prices)//4],
+            "third": prices[len(prices)*3//4],
+            "cheapest": prices[0]
+        }
+
+        return JsonResponse({
+            "hotels": results,
+            "metrics": metrics
+        })
+
+    except ResponseError as e:
+        return JsonResponse({"error": e.response.body}, status=400)
+
+
+def rooms_per_hotel(request, hotel, departureDate, returnDate):
+    try:
+        # Search for rooms in a given hotel
+        rooms = amadeus.shopping.hotel_offers_search.get(hotelIds=hotel,
+                                                         checkInDate=departureDate,
+                                                         checkOutDate=returnDate).data
+        hotel_rooms = Room(rooms).construct_room()
+        return render(request, 'demo/rooms_per_hotel.html', {'response': hotel_rooms,
+                                                             'name': rooms[0]['hotel']['name'],
+                                                             })
+    except (TypeError, AttributeError, ResponseError, KeyError) as error:
+        messages.add_message(request, messages.ERROR, error)
+        return render(request, 'demo/rooms_per_hotel.html', {})
+
+
+def book_hotel(request, offer_id):
+    try:
+        # Confirm availability of a given offer
+        offer_availability = amadeus.shopping.hotel_offer_search(offer_id).get()
+        if offer_availability.status_code == 200:
+            guests = [
+                {
+                    "tid": 1,
+                    "title": "MR",
+                    "firstName": "BOB",
+                    "lastName": "SMITH",
+                    "phone": "+33679278416",
+                    "email": "bob.smith@email.com"
+                }
+            ]
+            travel_agent = {
+                "contact": {
+                    "email": "test@test.com"
+                }
+            }
+
+            room_associations = [
+                {
+                    "guestReferences": [
+                        {
+                            "guestReference": "1"
+                        }
+                    ],
+                    "hotelOfferId": offer_id
+                }
+            ]
+
+            payment = {
+                "method": "CREDIT_CARD",
+                "paymentCard": {
+                    "paymentCardInfo": {
+                        "vendorCode": "VI",
+                        "cardNumber": "4151289722471370",
+                        "expiryDate": "2030-08",
+                        "holderName": "BOB SMITH"
+                    }
+                }
+            }
+            booking = amadeus.booking.hotel_orders.post(
+                guests=guests,
+                travel_agent=travel_agent,
+                room_associations=room_associations,
+                payment=payment).data
+        else:
+            return render(request, 'demo/booking.html', {'response': 'The room is not available'})
+    except ResponseError as error:
+        messages.add_message(request, messages.ERROR, error.response.body)
+        return render(request, 'demo/booking.html', {})
+    return render(request, 'demo/booking.html', {'pnr': booking['associatedRecords'][0]['reference'],
+                                                 'status': booking['hotelBookings'][0]['bookingStatus'],
+                                                 'providerConfirmationId':
+                                                     booking['hotelBookings'][0]['hotelProviderInformation'][0][
+                                                         'confirmationNumber']
+                                                 })
+

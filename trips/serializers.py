@@ -14,7 +14,7 @@ class CitySerializer(serializers.ModelSerializer):
         fields = ["id", "name", 'description', 'img_url', 'map_url', 'embed_map_url']
 
     def get_embed_map_url(self, city):
-        api_key = settings.GOOGLE_API_KEY
+        api_key = settings.GOOGLE_MAPS_API_KEY
         return generate_google_maps_embed_city(city.name, city.country, api_key)
 
 
@@ -35,7 +35,7 @@ class CountrySerializer(serializers.ModelSerializer):
         return generate_google_maps_link_country(country.name)
 
     def get_embed_map_url(self, country):
-        api_key = settings.GOOGLE_API_KEY
+        api_key = settings.GOOGLE_MAPS_API_KEY
         return generate_google_maps_embed_country(country.name,  api_key)
 
 

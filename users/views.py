@@ -160,18 +160,6 @@ class ResetPasswordView(APIView):
         return Response({'message': 'Password reset successful.'}, status=status.HTTP_200_OK)
 
 
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def profile_view(request):
-    user = request.user
-    return Response({
-        'id': user.id,
-        'email': user.email,
-        'phone': user.phone,
-        'first_name': user.first_name,
-        'last_name': user.last_name,
-    })
-
 
 class ProfileView(APIView):
     permission_classes = [IsAuthenticated]
