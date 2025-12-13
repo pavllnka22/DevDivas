@@ -2,27 +2,22 @@ import json
 
 import requests
 from amadeus import Client, ResponseError, Location
-from amadeus.namespaces._booking import Booking
 from django.contrib import messages
 from django.http import JsonResponse
+from django.shortcuts import get_object_or_404
 from django.views.decorators.csrf import csrf_exempt
+from google import genai
+from google.genai.errors import APIError
 from rest_framework import generics, status
 from rest_framework.decorators import permission_classes, api_view
-from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
 from TravellinoCappuchino import settings
-from .booking_flight import Booking
 from .flight import Flight
 from .metrics import Metrics
-from .models import Country, City, Trip, Hotel, Room
+from .models import Country, City, Trip, Room
 from .serializers import CitySerializer, TripSerializer, CountrySerializer
-
-
-from google import genai
-from google.genai.errors import APIError
-from django.shortcuts import get_object_or_404
-
 
 try:
     client = genai.Client()
