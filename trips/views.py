@@ -1,16 +1,27 @@
 import requests
 from django.http import JsonResponse
 from rest_framework import generics, status
+from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from TravellinoCappuchino import settings
 from .models import Country, City, Trip
 from .serializers import CitySerializer, TripSerializer, CountrySerializer
+from google import genai
+from google.genai.errors import APIError
+from django.shortcuts import get_object_or_404
+
+try:
+    client = genai.Client()
+except Exception as e:
+    print(f"Error initializing Gemini: {e}")
+    client = None
 
 
 def country_list(request):
     countries = Country.objects.all().values('id', 'name', 'description', 'flag_url', 'currency').order_by('name')
     return JsonResponse(list(countries), safe=False)
+
 
 def country_detail(request, country_id):
     try:
@@ -20,6 +31,7 @@ def country_detail(request, country_id):
     except Country.DoesNotExist:
         return JsonResponse({'error': 'Country not found'}, status=404)
 
+
 def city_detail(request, city_id):
     try:
         city = City.objects.get(id=city_id)
@@ -27,6 +39,7 @@ def city_detail(request, city_id):
         return JsonResponse(serializer.data, safe=False)
     except City.DoesNotExist:
         return JsonResponse({'error': 'City not found'}, status=404)
+
 
 def get_weather(request, city_id):
     try:
@@ -58,8 +71,9 @@ def get_weather(request, city_id):
 
 
 class CityListView(generics.ListAPIView):
+    serializer_class = CitySerializer
 
-   serializer_class = CitySerializer
+
 def get_queryset(self):
     cities = City.objects.all()
     serializer = CitySerializer(cities, many=True)
@@ -96,3 +110,66 @@ class TripListView(generics.ListAPIView):
 
         return trips
 
+def generate_city_trip_plan(city_id):
+    if not client:
+        raise Exception("Gemini Client wasn't initialized.")
+
+    city = get_object_or_404(City.objects.select_related('country'), pk=city_id)
+
+    context = (
+        f"City: {city.name}, Country: {city.country.name}. "
+        f"Description: {city.description}. "
+        f"Currency: {city.country.currency}."
+    )
+
+    model_name = "gemini-2.5-flash"
+    prompt = f"""Create a plan for a trip in the specified city {context}
+    plan must contain:
+            1. Main sightseeing
+            2. Information about local currency ({city.country.currency}).
+            3. Recommendations of local cuisine (at least 3-4 meals).
+            4. All answers in English.
+
+            Plan must be in a way of structured text with headers etc..
+            """
+
+    try:
+        response = client.models.generate_content(
+            model=model_name,
+            contents=prompt
+        )
+        return response.text
+
+    except APIError as e:
+        print(f"Error Gemini API: {e}")
+        raise APIError(f"{e}")
+    except Exception as e:
+        print(f"Unknown error: {e}")
+        raise
+
+
+@api_view(['POST'])
+def generate_city_trip_view(request):
+    if request.method == 'POST':
+        city_id = request.data.get('city_id')
+
+        if not city_id:
+            return Response({"error": "You need to specify the city's id."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            trip_plan = generate_city_trip_plan(city_id)
+
+            return Response({"trip": trip_plan}, status=status.HTTP_200_OK)
+
+        except City.DoesNotExist:
+            return Response({"error": "No city with such id."}, status=status.HTTP_404_NOT_FOUND)
+        except APIError as e:
+            return Response(
+                {"error": f"Couldn't generate: {e}"},
+                status=status.HTTP_502_BAD_GATEWAY
+            )
+        except Exception as e:
+            return Response(
+                {"error": f"Unknown error with server: {e}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )

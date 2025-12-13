@@ -1,5 +1,6 @@
 from django.urls import path
-from .views import country_list, country_detail, CityListView, TripListView, city_detail, get_weather
+from .views import country_list, country_detail, CityListView, TripListView, city_detail, get_weather, \
+    generate_city_trip_view
 
 urlpatterns = [
     path('countries/', country_list),
@@ -8,6 +9,6 @@ urlpatterns = [
     path("cities/<int:city_id>/", city_detail),
     path("trips/", TripListView.as_view(), name="trip-list"),
     path("weather/<int:city_id>/", get_weather),
+    path("trips/generate_city/", generate_city_trip_view, name="generate-city-trip"),
 
 ]
-
