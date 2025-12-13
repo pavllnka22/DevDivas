@@ -2,7 +2,6 @@ import json
 
 import requests
 from amadeus import Client, ResponseError, Location
-from django.contrib import messages
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 from django.views.decorators.csrf import csrf_exempt
@@ -10,13 +9,14 @@ from google import genai
 from google.genai.errors import APIError
 from rest_framework import generics, status
 from rest_framework.decorators import permission_classes, api_view
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from TravellinoCappuchino import settings
 from .flight import Flight
 from .metrics import Metrics
-from .models import Country, City, Trip, Room
+from .models import Country, City, Trip, SavedTrip
 from .serializers import CitySerializer, TripSerializer, CountrySerializer
 
 try:
@@ -435,78 +435,16 @@ def hotel_search(request):
         return JsonResponse({"error": e.response.body}, status=400)
 
 
-def rooms_per_hotel(request, hotel, departureDate, returnDate):
-    try:
-        # Search for rooms in a given hotel
-        rooms = amadeus.shopping.hotel_offers_search.get(hotelIds=hotel,
-                                                         checkInDate=departureDate,
-                                                         checkOutDate=returnDate).data
-        hotel_rooms = Room(rooms).construct_room()
-        return render(request, 'demo/rooms_per_hotel.html', {'response': hotel_rooms,
-                                                             'name': rooms[0]['hotel']['name'],
-                                                             })
-    except (TypeError, AttributeError, ResponseError, KeyError) as error:
-        messages.add_message(request, messages.ERROR, error)
-        return render(request, 'demo/rooms_per_hotel.html', {})
+class SaveTripView(APIView):
+    permission_classes = [IsAuthenticated]
 
+    def post(self, request):
+        user = request.user
+        city = request.data.get('city')
+        trip_plan = request.data.get('tripPlan')
 
-def book_hotel(request, offer_id):
-    try:
-        # Confirm availability of a given offer
-        offer_availability = amadeus.shopping.hotel_offer_search(offer_id).get()
-        if offer_availability.status_code == 200:
-            guests = [
-                {
-                    "tid": 1,
-                    "title": "MR",
-                    "firstName": "BOB",
-                    "lastName": "SMITH",
-                    "phone": "+33679278416",
-                    "email": "bob.smith@email.com"
-                }
-            ]
-            travel_agent = {
-                "contact": {
-                    "email": "test@test.com"
-                }
-            }
+        if not city or not trip_plan:
+            return Response({'success': False, 'message': 'Missing data'}, status=400)
 
-            room_associations = [
-                {
-                    "guestReferences": [
-                        {
-                            "guestReference": "1"
-                        }
-                    ],
-                    "hotelOfferId": offer_id
-                }
-            ]
-
-            payment = {
-                "method": "CREDIT_CARD",
-                "paymentCard": {
-                    "paymentCardInfo": {
-                        "vendorCode": "VI",
-                        "cardNumber": "4151289722471370",
-                        "expiryDate": "2030-08",
-                        "holderName": "BOB SMITH"
-                    }
-                }
-            }
-            booking = amadeus.booking.hotel_orders.post(
-                guests=guests,
-                travel_agent=travel_agent,
-                room_associations=room_associations,
-                payment=payment).data
-        else:
-            return render(request, 'demo/booking.html', {'response': 'The room is not available'})
-    except ResponseError as error:
-        messages.add_message(request, messages.ERROR, error.response.body)
-        return render(request, 'demo/booking.html', {})
-    return render(request, 'demo/booking.html', {'pnr': booking['associatedRecords'][0]['reference'],
-                                                 'status': booking['hotelBookings'][0]['bookingStatus'],
-                                                 'providerConfirmationId':
-                                                     booking['hotelBookings'][0]['hotelProviderInformation'][0][
-                                                         'confirmationNumber']
-                                                 })
-
+        SavedTrip.objects.create(user=user, city=city, trip_plan=trip_plan)
+        return Response({'success': True})

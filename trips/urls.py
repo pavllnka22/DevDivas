@@ -1,7 +1,8 @@
 from django.urls import path
 
 from . import views
-from .views import country_list, country_detail, CityListView, TripListView, city_detail, get_weather, generate_city_trip_view
+from .views import country_list, country_detail, CityListView, TripListView, city_detail, get_weather, \
+    generate_city_trip_view, SaveTripView
 
 urlpatterns = [
 
@@ -15,6 +16,8 @@ urlpatterns = [
     path("trips/generate_city/", generate_city_trip_view, name="generate-city-trip"),
 
     path('trips/hotels/', views.hotel_search, name='hotels_search'),
+
+    path('trips/save-trip/', SaveTripView.as_view(), name='save_trip'),
 
     path('trips/flights/', views.flight_offers, name='flight_offers'),
     path('trips/origin_airport_search/', views.origin_airport_search, name='origin_airport_search'),

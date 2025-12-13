@@ -2,8 +2,12 @@ import os
 
 import requests
 from django.contrib import admin
+from django.contrib.auth.models import User
 from django.db import models
 import geocoder
+
+from TravellinoCappuchino import settings
+
 
 class Country(models.Model):
     name = models.CharField(max_length=100, unique=True)
@@ -104,19 +108,16 @@ class Hotel:
             pass
         return offer
 
-class Room:
-    def __init__(self, rooms):
-        self.rooms = rooms
 
-    def construct_room(self):
-        hotel_rooms = []
-        try:
-            for room in self.rooms[0]['offers']:
-                offer = {}
-                offer['price'] = room['price']['total']
-                offer['description'] = room['room']['description']['text']
-                offer['offerID'] = room['id']
-                hotel_rooms.append(offer)
-        except (TypeError, AttributeError, KeyError):
-            pass
-        return hotel_rooms
+class SavedTrip(models.Model):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="saved_trips"
+    )
+    city = models.CharField(max_length=255)
+    trip_plan = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.user} - {self.city}"
