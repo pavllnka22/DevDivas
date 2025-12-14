@@ -2,6 +2,7 @@ from rest_framework import serializers
 
 from TravellinoCappuchino import settings
 from .models import Country, City, Trip, Accommodation, Flight, VisitedCountry
+from .models import Country, City, Trip, Accommodation, Flight, SavedTrip
 from .utils import generate_google_maps_link_city, generate_google_maps_link_country, generate_google_maps_embed_city, generate_google_maps_embed_country
 
 
@@ -52,3 +53,7 @@ class VisitedCountrySerializer(serializers.ModelSerializer):
     class Meta:
         model = VisitedCountry
         fields = ['country_code']
+class SavedTripSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SavedTrip
+        fields = ['city', 'tripPlan']

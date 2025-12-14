@@ -2,26 +2,22 @@ import json
 
 import requests
 from amadeus import Client, ResponseError, Location
-from amadeus.namespaces._booking import Booking
-from django.contrib import messages
-from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
+from django.shortcuts import get_object_or_404
 from django.views.decorators.csrf import csrf_exempt
+from google import genai
+from google.genai.errors import APIError
 from rest_framework import generics, status
 from rest_framework.decorators import permission_classes, api_view
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from TravellinoCappuchino import settings
-from .booking_flight import Booking
 from .flight import Flight
 from .metrics import Metrics
-from .models import Country, City, Trip, Hotel, Room, TripPlan, VisitedCountry
-from .serializers import CitySerializer, TripSerializer, CountrySerializer, VisitedCountrySerializer
-
-from google import genai
-from google.genai.errors import APIError
-from django.shortcuts import get_object_or_404
+from .models import Country, City, Trip, SavedTrip
+from .serializers import CitySerializer, TripSerializer, CountrySerializer
 
 try:
     client = genai.Client()
@@ -473,75 +469,16 @@ def hotel_search(request):
         return JsonResponse({"error": e.response.body}, status=400)
 
 
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def save_trip_plan(request):
+class SaveTripView(APIView):
+    permission_classes = [IsAuthenticated]
 
-    user = request.user
-    city = request.data.get('city')
-    trip_text = request.data.get('tripPlan')
+    def post(self, request):
+        user = request.user
+        city = request.data.get('city')
+        trip_plan = request.data.get('tripPlan')
 
-    if not city or not trip_text:
-        return Response({"error": "City and trip plan are required"}, status=400)
+        if not city or not trip_plan:
+            return Response({'success': False, 'message': 'Missing data'}, status=400)
 
-    trip = TripPlan.objects.create(
-        user=user,
-        city=city,
-        trip_text=trip_text
-    )
-
-    return Response({"success": True, "tripId": trip.id})
-
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def get_saved_trips(request):
-    trips = TripPlan.objects.filter(user=request.user)
-    data = [
-        {
-            "id": trip.id,
-            "city": trip.city,
-            "trip_text": trip.trip_text
-        } for trip in trips
-    ]
-    return Response(data)
-
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def visited_countries(request):
-    countries = VisitedCountry.objects.filter(user=request.user)
-    serializer = VisitedCountrySerializer(countries, many=True)
-    iso_codes = [c['country_code'] for c in serializer.data]
-    return Response({"countries": iso_codes})
-
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def mark_country_visited(request):
-
-    country_code = request.data.get("country_code")
-    if not country_code:
-        return Response({"error": "country_code is required"}, status=400)
-
-    visited, created = VisitedCountry.objects.get_or_create(
-        user=request.user,
-        country_code=country_code.upper()
-    )
-
-    return Response({"success": True, "created": created})
-
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def unmark_country_visited(request):
-    country_code = request.data.get("country_code")
-    if not country_code:
-        return Response({"error": "country_code is required"}, status=400)
-
-    record = VisitedCountry.objects.filter(user=request.user, country_code=country_code.upper()).first()
-    if record:
-        record.delete()
-        return Response({"success": True})
-    else:
-        return Response({"success": False, "message": "Country not marked as visited"}, status=404)
+        SavedTrip.objects.create(user=user, city=city, trip_plan=trip_plan)
+        return Response({'success': True})
