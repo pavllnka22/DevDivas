@@ -4,6 +4,7 @@ import requests
 from amadeus import Client, ResponseError, Location
 from amadeus.namespaces._booking import Booking
 from django.contrib import messages
+from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework import generics, status
@@ -15,14 +16,12 @@ from TravellinoCappuchino import settings
 from .booking_flight import Booking
 from .flight import Flight
 from .metrics import Metrics
-from .models import Country, City, Trip, Hotel, Room
-from .serializers import CitySerializer, TripSerializer, CountrySerializer
-
+from .models import Country, City, Trip, Hotel, Room, TripPlan, VisitedCountry
+from .serializers import CitySerializer, TripSerializer, CountrySerializer, VisitedCountrySerializer
 
 from google import genai
 from google.genai.errors import APIError
 from django.shortcuts import get_object_or_404
-
 
 try:
     client = genai.Client()
@@ -236,8 +235,6 @@ def build_price_metrics(flight_offers):
 
     cheapest = prices[0]
 
-
-
     return {
         "min": min_price,
         "max": max_price,
@@ -287,7 +284,6 @@ def get_city_airport_list(amadeus_data):
     return result
 
 
-
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def city_to_iata(request):
@@ -310,54 +306,85 @@ def city_to_iata(request):
         return Response({"error": str(e)}, status=500)
 
 
-def generate_city_trip_plan(city_id):
+def generate_city_trip_plan(city_id, days=None, travel_goal=None, month=None, budget=None, style=None, company=None):
     if not client:
         raise Exception("Gemini Client wasn't initialized.")
 
     city = get_object_or_404(City.objects.select_related('country'), pk=city_id)
 
-    context = (
-        f"City: {city.name}, Country: {city.country.name}. "
-        f"Description: {city.description}. "
-        f"Currency: {city.country.currency}."
+    user_preferences = []
+
+    if days:
+        user_preferences.append(f"- Trip duration: {days} days")
+    if travel_goal:
+        user_preferences.append(f"- Travel goal: {travel_goal}")
+    if month:
+        user_preferences.append(f"- Month of travel: {month}")
+    if budget:
+        user_preferences.append(f"- Budget: {budget}")
+    if style:
+        user_preferences.append(f"- Style: {style}")
+    if company:
+        user_preferences.append(f"- Company: {company}")
+
+    preferences_text = "\n".join(user_preferences) if user_preferences else "No specific preferences."
+    prompt = f"""
+    You are a professional travel planner.
+
+    City information:
+    - City: {city.name}
+    - Country: {city.country.name}
+    - Currency: {city.country.currency}
+    - Description: {city.description}
+
+    User preferences:
+    {preferences_text}
+
+    Create a personalized travel plan that includes:
+
+    1. Main sightseeing attractions (adjusted to trip duration), possible transport options of the city.
+    2. Useful information about local currency, traditions and cultural points, that every traveler should know.
+    3. Local cuisine must try's and top places where to find them.
+    4. If trip duration is more than 1 day — split the plan by days.
+    5. Take into account the travel month if provided, tell about the weather and give advice about clothes.
+    6.Take into consideration company for the trip and travel style, make the most suitable plan according to this information.
+    7.Take into consideration trip budget and offer options according to the given information.
+
+    Output requirements:
+    - Use structured text with clear headers.
+    - All content must be in English.
+    """
+
+    response = client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=prompt
     )
 
-    model_name = "gemini-2.5-flash"
-    prompt = f"""Create a plan for a trip in the specified city {context}
-    plan must contain:
-            1. Main sightseeing
-            2. Information about local currency ({city.country.currency}).
-            3. Recommendations of local cuisine (at least 3-4 meals).
-            4. All answers in English.
-
-            Plan must be in a way of structured text with headers etc..
-            """
-
-    try:
-        response = client.models.generate_content(
-            model=model_name,
-            contents=prompt
-        )
-        return response.text
-
-    except APIError as e:
-        print(f"Error Gemini API: {e}")
-        raise APIError(f"{e}")
-    except Exception as e:
-        print(f"Unknown error: {e}")
-        raise
+    return response.text
 
 
 @api_view(['POST'])
 def generate_city_trip_view(request):
     if request.method == 'POST':
         city_id = request.data.get('city_id')
+        days = request.data.get('days')
+        travel_goal = request.data.get('travel_goal')
+        month = request.data.get('month')
+        budget = request.data.get('budget')
+        style = request.data.get('style')
+        company = request.data.get('company')
 
         if not city_id:
             return Response({"error": "You need to specify the city's id."}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            trip_plan = generate_city_trip_plan(city_id)
+            trip_plan = generate_city_trip_plan(city_id=city_id,
+                                                days=days,
+                                                travel_goal=travel_goal,
+                                                month=month,
+                                                budget=budget,
+                                                style=style,
+                                                company=company)
 
             return Response({"trip": trip_plan}, status=status.HTTP_200_OK)
 
@@ -385,8 +412,9 @@ def hotel_search(request):
     city_code = data.get("cityCode")
     checkin = data.get("checkInDate")
     checkout = data.get("checkOutDate")
+    num_of_guests = data.get("numOfGuests")
 
-    if not city_code or not checkin or not checkout:
+    if not city_code or not checkin or not checkout or not num_of_guests:
         return JsonResponse({"error": "Missing params"}, status=400)
 
     try:
@@ -399,12 +427,17 @@ def hotel_search(request):
         offers = amadeus.shopping.hotel_offers_search.get(
             hotelIds=hotel_ids,
             checkInDate=checkin,
-            checkOutDate=checkout
+            checkOutDate=checkout,
+            adults=num_of_guests
         ).data
 
         results = []
         prices = []
-
+        if not offers:
+            return JsonResponse({
+                "hotels": [],
+                "message": "No hotel offers found for this city and dates."
+            })
         for h in offers:
             hotel = h["hotel"]
             for offer in h["offers"]:
@@ -426,8 +459,8 @@ def hotel_search(request):
         metrics = {
             "min": min(prices),
             "max": max(prices),
-            "first": prices[len(prices)//4],
-            "third": prices[len(prices)*3//4],
+            "first": prices[len(prices) // 4],
+            "third": prices[len(prices) * 3 // 4],
             "cheapest": prices[0]
         }
 
@@ -440,78 +473,75 @@ def hotel_search(request):
         return JsonResponse({"error": e.response.body}, status=400)
 
 
-def rooms_per_hotel(request, hotel, departureDate, returnDate):
-    try:
-        # Search for rooms in a given hotel
-        rooms = amadeus.shopping.hotel_offers_search.get(hotelIds=hotel,
-                                                         checkInDate=departureDate,
-                                                         checkOutDate=returnDate).data
-        hotel_rooms = Room(rooms).construct_room()
-        return render(request, 'demo/rooms_per_hotel.html', {'response': hotel_rooms,
-                                                             'name': rooms[0]['hotel']['name'],
-                                                             })
-    except (TypeError, AttributeError, ResponseError, KeyError) as error:
-        messages.add_message(request, messages.ERROR, error)
-        return render(request, 'demo/rooms_per_hotel.html', {})
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def save_trip_plan(request):
+
+    user = request.user
+    city = request.data.get('city')
+    trip_text = request.data.get('tripPlan')
+
+    if not city or not trip_text:
+        return Response({"error": "City and trip plan are required"}, status=400)
+
+    trip = TripPlan.objects.create(
+        user=user,
+        city=city,
+        trip_text=trip_text
+    )
+
+    return Response({"success": True, "tripId": trip.id})
 
 
-def book_hotel(request, offer_id):
-    try:
-        # Confirm availability of a given offer
-        offer_availability = amadeus.shopping.hotel_offer_search(offer_id).get()
-        if offer_availability.status_code == 200:
-            guests = [
-                {
-                    "tid": 1,
-                    "title": "MR",
-                    "firstName": "BOB",
-                    "lastName": "SMITH",
-                    "phone": "+33679278416",
-                    "email": "bob.smith@email.com"
-                }
-            ]
-            travel_agent = {
-                "contact": {
-                    "email": "test@test.com"
-                }
-            }
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_saved_trips(request):
+    trips = TripPlan.objects.filter(user=request.user)
+    data = [
+        {
+            "id": trip.id,
+            "city": trip.city,
+            "trip_text": trip.trip_text
+        } for trip in trips
+    ]
+    return Response(data)
 
-            room_associations = [
-                {
-                    "guestReferences": [
-                        {
-                            "guestReference": "1"
-                        }
-                    ],
-                    "hotelOfferId": offer_id
-                }
-            ]
 
-            payment = {
-                "method": "CREDIT_CARD",
-                "paymentCard": {
-                    "paymentCardInfo": {
-                        "vendorCode": "VI",
-                        "cardNumber": "4151289722471370",
-                        "expiryDate": "2030-08",
-                        "holderName": "BOB SMITH"
-                    }
-                }
-            }
-            booking = amadeus.booking.hotel_orders.post(
-                guests=guests,
-                travel_agent=travel_agent,
-                room_associations=room_associations,
-                payment=payment).data
-        else:
-            return render(request, 'demo/booking.html', {'response': 'The room is not available'})
-    except ResponseError as error:
-        messages.add_message(request, messages.ERROR, error.response.body)
-        return render(request, 'demo/booking.html', {})
-    return render(request, 'demo/booking.html', {'pnr': booking['associatedRecords'][0]['reference'],
-                                                 'status': booking['hotelBookings'][0]['bookingStatus'],
-                                                 'providerConfirmationId':
-                                                     booking['hotelBookings'][0]['hotelProviderInformation'][0][
-                                                         'confirmationNumber']
-                                                 })
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def visited_countries(request):
+    countries = VisitedCountry.objects.filter(user=request.user)
+    serializer = VisitedCountrySerializer(countries, many=True)
+    iso_codes = [c['country_code'] for c in serializer.data]
+    return Response({"countries": iso_codes})
 
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def mark_country_visited(request):
+
+    country_code = request.data.get("country_code")
+    if not country_code:
+        return Response({"error": "country_code is required"}, status=400)
+
+    visited, created = VisitedCountry.objects.get_or_create(
+        user=request.user,
+        country_code=country_code.upper()
+    )
+
+    return Response({"success": True, "created": created})
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def unmark_country_visited(request):
+    country_code = request.data.get("country_code")
+    if not country_code:
+        return Response({"error": "country_code is required"}, status=400)
+
+    record = VisitedCountry.objects.filter(user=request.user, country_code=country_code.upper()).first()
+    if record:
+        record.delete()
+        return Response({"success": True})
+    else:
+        return Response({"success": False, "message": "Country not marked as visited"}, status=404)

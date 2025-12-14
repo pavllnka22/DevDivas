@@ -5,6 +5,10 @@ from django.contrib import admin
 from django.db import models
 import geocoder
 
+from TravellinoCappuchino import settings
+from users.views import User
+
+
 class Country(models.Model):
     name = models.CharField(max_length=100, unique=True)
     description = models.TextField(blank=True)
@@ -120,3 +124,25 @@ class Room:
         except (TypeError, AttributeError, KeyError):
             pass
         return hotel_rooms
+
+
+class TripPlan(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='trip_plans')
+    city = models.CharField(max_length=255)
+    trip_text = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.city} ({self.user.email})"
+
+
+class VisitedCountry(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="visited_countries")
+    country_code = models.CharField(max_length=2)
+    date_visited = models.DateField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("user", "country_code")
+
+    def __str__(self):
+        return f"{self.user.email} - {self.country_code}"
