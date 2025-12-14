@@ -121,3 +121,16 @@ class SavedTrip(models.Model):
 
     def __str__(self):
         return f"{self.user} - {self.city}"
+
+
+
+class VisitedCountry(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="visited_countries")
+    country_code = models.CharField(max_length=2)
+    date_visited = models.DateField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("user", "country_code")
+
+    def __str__(self):
+        return f"{self.user.email} - {self.country_code}"
