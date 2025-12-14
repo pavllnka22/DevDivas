@@ -20,6 +20,7 @@ urlpatterns = [
     path('trips/save-trip/', SaveTripView.as_view(), name='save_trip'),
 
     path('trips/flights/', views.flight_offers, name='flight_offers'),
+    path('trips/hotels/', views.hotel_search, name='hotel_search'),
     path('trips/origin_airport_search/', views.origin_airport_search, name='origin_airport_search'),
     path('trips/destination_airport_search/', views.destination_airport_search, name='destination_airport_search')
 ]

@@ -119,7 +119,10 @@ AUTHENTICATION_BACKENDS = [
 
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5178",
-    "http://localhost:5173"
+    "http://localhost:5173",
+    "http://localhost:5175",
+    "http://localhost:5176",
+    "http://localhost:5177"
 ]
 
 CORS_ALLOW_CREDENTIALS = True
@@ -179,11 +182,10 @@ DEFAULT_FROM_EMAIL = 'noreply@yoursite.com'
 GOOGLE_MAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY")
 WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")
 
-#GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+# GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
 AMADEUS_API_KEY = os.getenv("AMADEUS_API_KEY")
 AMADEUS_API_SECRET = os.getenv("AMADEUS_API_SECRET")
 
 GENERATOR = os.getenv('TRIP_GENERATOR')
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
-
